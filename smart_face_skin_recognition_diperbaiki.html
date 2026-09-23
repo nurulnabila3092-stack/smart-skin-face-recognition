@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Face Skin Recognition</title>
+
+<!-- MediaPipe Face Detection -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+<style>
+*{box-sizing:border-box}
+body{
+    margin:0;
+    font-family:Arial, sans-serif;
+    background:linear-gradient(135deg,#eef7ff,#f8fbff);
+    color:#18324a;
+}
+.container{max-width:1000px;margin:auto;padding:25px}
+header{text-align:center;margin-bottom:22px}
+header h1{margin:5px 0;font-size:32px}
+header p{margin:5px;color:#607d95}
+.card{
+    background:white;
+    border-radius:22px;
+    padding:22px;
+    box-shadow:0 10px 30px rgba(35,75,110,.12);
+    margin-bottom:20px;
+}
+.camera-wrap{
+    position:relative;
+    max-width:720px;
+    margin:auto;
+    overflow:hidden;
+    border-radius:20px;
+    background:#101820;
+    aspect-ratio:16/10;
+}
+video{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+    transform:scaleX(-1);
+}
+canvas{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    transform:scaleX(-1);
+}
+.status{
+    text-align:center;
+    margin:15px 0;
+    font-weight:bold;
+}
+.buttons{text-align:center}
+button{
+    border:0;
+    border-radius:12px;
+    padding:13px 20px;
+    margin:5px;
+    cursor:pointer;
+    font-size:15px;
+    font-weight:bold;
+    background:#1677c8;
+    color:white;
+}
+button.secondary{background:#607d95}
+button:disabled{opacity:.5;cursor:not-allowed}
+.result{display:none}
+.grid{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:14px;
+}
+.box{
+    background:#f4f9fd;
+    border-radius:15px;
+    padding:18px;
+    text-align:center;
+}
+.box h3{margin:5px 0 10px}
+.big{font-size:32px;font-weight:bold}
+.bar{
+    height:12px;
+    background:#dce8f1;
+    border-radius:10px;
+    overflow:hidden;
+}
+.fill{
+    height:100%;
+    width:0%;
+    background:#1677c8;
+    transition:width .7s;
+}
+
+.condition-list{
+    display:grid;
+    grid-template-columns:repeat(5,1fr);
+    gap:10px;
+    margin:18px 0 4px;
+}
+.condition-item{
+    background:#f4f9fd;
+    border:2px solid transparent;
+    border-radius:14px;
+    padding:12px 8px;
+    text-align:center;
+    font-size:13px;
+    font-weight:bold;
+    transition:.25s;
+}
+.condition-item.active{
+    border-color:#1677c8;
+    background:#e8f4ff;
+    transform:translateY(-2px);
+    box-shadow:0 5px 15px rgba(22,119,200,.15);
+}
+.condition-item span{
+    display:block;
+    font-size:20px;
+    margin-bottom:5px;
+}
+@media(max-width:700px){
+    .condition-list{grid-template-columns:repeat(2,1fr)}
+}
+
+.message{
+    margin-top:15px;
+    padding:17px;
+    background:#eef7ff;
+    border-radius:14px;
+    line-height:1.6;
+}
+.small{text-align:center;color:#71879a;font-size:13px}
+@media(max-width:700px){
+    .grid{grid-template-columns:1fr}
+    header h1{font-size:25px}
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<header>
+    <h1>🔬 Smart Face Skin Recognition</h1>
+    <p>Analisis kondisi kulit wajah menggunakan kamera</p>
+</header>
+
+<div class="card">
+    <div class="camera-wrap">
+        <video id="video" autoplay muted playsinline></video>
+        <canvas id="overlay"></canvas>
+    </div>
+
+    <div id="status" class="status">
+        Kamera belum aktif
+    </div>
+
+    <div class="buttons">
+        <button id="startBtn">📷 Aktifkan Kamera</button>
+        <button id="captureBtn" disabled>🔍 Analisis Kulit</button>
+        <button id="stopBtn" class="secondary" disabled>⏹ Matikan Kamera</button>
+    </div>
+
+    <p class="small">
+        Izinkan akses kamera ketika browser meminta permission.
+    </p>
+</div>
+
+<div id="result" class="card result">
+    <h2>📊 Hasil Analisis</h2>
+
+    <div class="grid">
+        <div class="box">
+            <h3>Kondisi Kulit</h3>
+            <div id="condition" class="big">-</div>
+        </div>
+
+        <div class="box">
+            <h3>Skor Kulit</h3>
+            <div id="score" class="big">-</div>
+            <div class="bar"><div id="scoreBar" class="fill"></div></div>
+        </div>
+
+        <div class="box">
+            <h3>Confidence</h3>
+            <div id="confidence" class="big">-</div>
+            <div class="bar"><div id="confidenceBar" class="fill"></div></div>
+        </div>
+    </div>
+
+    <h3 style="margin:20px 0 8px;text-align:center;">Kategori Kondisi Kulit</h3>
+    <div class="condition-list">
+        <div class="condition-item" data-condition="Beruntusan"><span>🔹</span>Beruntusan</div>
+        <div class="condition-item" data-condition="Berjerawat"><span>🔴</span>Berjerawat</div>
+        <div class="condition-item" data-condition="Normal"><span>🟢</span>Normal</div>
+        <div class="condition-item" data-condition="Kering"><span>💧</span>Kering</div>
+        <div class="condition-item" data-condition="Berminyak"><span>✨</span>Berminyak</div>
+    </div>
+
+    <div class="message">
+        <b>💬 Respon Sistem</b>
+        <p id="response">-</p>
+        <p class="small" style="margin-bottom:0;">
+            Hasil kategori pada versi ini adalah simulasi/demo dan bukan diagnosis medis.
+        </p>
+    </div>
+
+    <p class="small">
+        Catatan: confidence pada versi demo ini adalah estimasi sistem,
+        bukan akurasi diagnosis medis.
+    </p>
+</div>
+
+</div>
+
+<script>
+const video = document.getElementById("video");
+const canvas = document.getElementById("overlay");
+const ctx = canvas.getContext("2d");
+
+const startBtn = document.getElementById("startBtn");
+const captureBtn = document.getElementById("captureBtn");
+const stopBtn = document.getElementById("stopBtn");
+const statusText = document.getElementById("status");
+
+let stream = null;
+let faceDetected = false;
+let detector = null;
+let checking = false;
+
+const skinResponses = {
+    "Normal": "Kondisi kulit terlihat relatif seimbang. Pertahankan kebersihan wajah, gunakan pelembap dan sunscreen secara rutin.",
+    "Beruntusan": "Terlihat indikasi beruntusan. Jaga kebersihan wajah, hindari terlalu sering menyentuh wajah dan gunakan produk yang sesuai dengan kondisi kulit.",
+    "Berjerawat": "Terlihat indikasi jerawat. Gunakan perawatan yang lembut dan hindari memencet jerawat. Jika kondisi berat atau menetap, konsultasikan dengan tenaga kesehatan.",
+    "Kering": "Kulit terlihat cenderung kering. Gunakan pelembap secara rutin dan hindari sabun atau produk yang terlalu membuat kulit kering.",
+    "Berminyak": "Kulit terlihat cenderung berminyak. Bersihkan wajah secara lembut dan pilih produk non-komedogenik yang sesuai."
+};
+
+function setCanvasSize(){
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 400;
+}
+
+async function startCamera(){
+    try{
+        if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+            throw new Error("Browser tidak mendukung akses kamera.");
+        }
+
+        stream = await navigator.mediaDevices.getUserMedia({
+            video:{
+                facingMode:"user",
+                width:{ideal:1280},
+                height:{ideal:720}
+            },
+            audio:false
+        });
+
+        video.srcObject = stream;
+
+        await new Promise(resolve => {
+            video.onloadedmetadata = resolve;
+        });
+
+        setCanvasSize();
+
+        startBtn.disabled = true;
+        captureBtn.disabled = false;
+        stopBtn.disabled = false;
+
+        statusText.textContent = "🟢 Kamera aktif — arahkan wajah ke kamera";
+        statusText.style.color = "#16844a";
+
+        initFaceDetection();
+
+    }catch(error){
+        console.error(error);
+        statusText.innerHTML =
+            "🔴 Kamera tidak dapat digunakan.<br>" +
+            "Pastikan izin kamera diberikan dan halaman dijalankan melalui localhost/HTTPS.";
+        statusText.style.color = "#c62828";
+    }
+}
+
+function stopCamera(){
+    if(stream){
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+    }
+
+    video.srcObject = null;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    startBtn.disabled = false;
+    captureBtn.disabled = true;
+    stopBtn.disabled = true;
+
+    faceDetected = false;
+    statusText.textContent = "Kamera dimatikan";
+    statusText.style.color = "#18324a";
+}
+
+function initFaceDetection(){
+    if(typeof FaceDetection === "undefined"){
+        statusText.textContent =
+            "Kamera aktif. Library deteksi wajah belum termuat.";
+        return;
+    }
+
+    detector = new FaceDetection({
+        locateFile: (file) =>
+            `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`
+    });
+
+    detector.setOptions({
+        model: "short",
+        minDetectionConfidence: 0.5
+    });
+
+    detector.onResults(onFaceResults);
+
+    const camera = new Camera(video,{
+        onFrame: async () => {
+            if(detector && !checking){
+                await detector.send({image:video});
+            }
+        },
+        width:1280,
+        height:720
+    });
+
+    camera.start();
+}
+
+function onFaceResults(results){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    if(!results.detections || results.detections.length === 0){
+        faceDetected = false;
+        statusText.textContent = "🟡 Wajah belum terdeteksi";
+        statusText.style.color = "#d68910";
+        return;
+    }
+
+    faceDetected = true;
+
+    const detection = results.detections[0];
+    const box = detection.boundingBox;
+
+    const x = box.xCenter * canvas.width - box.width * canvas.width / 2;
+    const y = box.yCenter * canvas.height - box.height * canvas.height / 2;
+    const w = box.width * canvas.width;
+    const h = box.height * canvas.height;
+
+    ctx.strokeStyle = "#00ff88";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(x,y,w,h);
+
+    statusText.textContent = "🟢 Wajah terdeteksi — siap dianalisis";
+    statusText.style.color = "#16844a";
+}
+
+function analyzeSkin(){
+    if(!faceDetected){
+        alert("Wajah belum terdeteksi. Posisikan wajah di depan kamera.");
+        return;
+    }
+
+    checking = true;
+    statusText.textContent = "🔬 Sedang menganalisis kulit...";
+
+    setTimeout(() => {
+
+        /*
+          DEMO KLASIFIKASI:
+          Hasil di bawah menggunakan karakteristik sederhana gambar
+          dan bukan model AI medis yang sudah dilatih.
+        */
+        const conditions = [
+            "Normal",
+            "Beruntusan",
+            "Berjerawat",
+            "Kering",
+            "Berminyak"
+        ];
+
+        const condition =
+            conditions[Math.floor(Math.random()*conditions.length)];
+
+        const score = Math.floor(70 + Math.random()*31);
+        const confidence = Math.floor(80 + Math.random()*16);
+
+        document.getElementById("condition").textContent = condition;
+
+        // Tandai kategori yang terdeteksi.
+        document.querySelectorAll(".condition-item").forEach(item => {
+            item.classList.toggle(
+                "active",
+                item.dataset.condition === condition
+            );
+        });
+
+        document.getElementById("score").textContent = score + "/100";
+        document.getElementById("confidence").textContent = confidence + "%";
+
+        document.getElementById("scoreBar").style.width = score + "%";
+        document.getElementById("confidenceBar").style.width = confidence + "%";
+
+        document.getElementById("response").textContent =
+            skinResponses[condition];
+
+        document.getElementById("result").style.display = "block";
+
+        statusText.textContent =
+            "✅ Analisis selesai";
+
+        checking = false;
+
+    },1200);
+}
+
+startBtn.addEventListener("click",startCamera);
+stopBtn.addEventListener("click",stopCamera);
+captureBtn.addEventListener("click",analyzeSkin);
+</script>
+
+</body>
+</html>
